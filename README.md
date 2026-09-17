@@ -20,6 +20,12 @@ Supported document formats include PDF, JPEG, JPG, PNG, BMP, TIFF, HEIF, DOCX, X
 
 Learn more about the Document Layout Analysis API v4.0 [here](https://learn.microsoft.com/azure/ai-services/document-intelligence/prebuilt/layout?view=doc-intel-4.0.0).
 
+The tool also supports:
+
+- Optional 1-based first and last page limits. Supplying only the first page analyzes that page; supplying only the last page analyzes pages 1 through that page.
+- Optional removal of Markdown lines containing Azure `PageHeader` comments. This is disabled by default to preserve existing output.
+- A provider-level API version setting. The installed Azure AI Document Intelligence SDK supports `2024-11-30`; unsupported versions are rejected before a request is sent.
+
 ## Configuration and Usage
 
 See [Plugin README](./README.difypkg.md) for configuration and usage details.
@@ -27,6 +33,8 @@ See [Plugin README](./README.difypkg.md) for configuration and usage details.
 ## Notes
 
 This plugin uses the Document Layout Analysis API v4.0 of the [Azure AI Document Intelligence](https://azure.microsoft.com/products/ai-services/ai-document-intelligence) service. Please refer to the official documentation for more information.
+
+This plugin does not use Azure AI Content Understanding. Content Understanding endpoints, API versions, and analyzers are not interchangeable with Azure AI Document Intelligence.
 
 ## Contributing
 

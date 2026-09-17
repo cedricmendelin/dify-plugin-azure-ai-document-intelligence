@@ -1,2 +1,2 @@
 dify_plugin
-azure-ai-documentintelligence==1.0.0
+azure-ai-documentintelligence==1.0.2

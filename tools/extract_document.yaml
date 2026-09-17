@@ -42,6 +42,42 @@ parameters:
           en_US: Markdown
           ja_JP: Markdown
     default: text
+  - name: first_page
+    type: number
+    required: false
+    min: 1
+    label:
+      en_US: First page
+      ja_JP: 開始ページ
+    human_description:
+      en_US: First 1-based page to analyze. If last page is omitted, only this page is analyzed.
+      ja_JP: 解析する最初のページ（1から開始）。終了ページを省略すると、このページのみを解析します。
+    llm_description: Optional first 1-based page to analyze.
+    form: form
+  - name: last_page
+    type: number
+    required: false
+    min: 1
+    label:
+      en_US: Last page
+      ja_JP: 終了ページ
+    human_description:
+      en_US: Last 1-based page to analyze. If first page is omitted, analysis starts at page 1.
+      ja_JP: 解析する最後のページ（1から開始）。開始ページを省略すると、1ページ目から解析します。
+    llm_description: Optional last 1-based page to analyze.
+    form: form
+  - name: remove_page_headers
+    type: boolean
+    required: false
+    default: false
+    label:
+      en_US: Remove page headers
+      ja_JP: ページヘッダーを削除
+    human_description:
+      en_US: Remove Markdown lines containing Azure PageHeader comments. Disabled by default.
+      ja_JP: Azure の PageHeader コメントを含む Markdown 行を削除します。既定では無効です。
+    llm_description: Whether to remove Markdown lines containing Azure PageHeader comments.
+    form: form
 extra:
   python:
     source: tools/extract_document.py

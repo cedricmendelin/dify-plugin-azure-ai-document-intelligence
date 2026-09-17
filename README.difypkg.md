@@ -15,6 +15,11 @@ Supported document formats include PDF, JPEG, JPG, PNG, BMP, TIFF, HEIF, DOCX, X
 
 Learn more about the Document Layout Analysis API v4.0 [here](https://learn.microsoft.com/azure/ai-services/document-intelligence/prebuilt/layout?view=doc-intel-4.0.0).
 
+Optional extraction settings:
+
+- **First page / Last page:** Restrict analysis to a 1-based page range. If only the first page is set, only that page is analyzed. If only the last page is set, analysis starts at page 1.
+- **Remove page headers:** Remove Markdown lines containing Azure `PageHeader` comments. This is disabled by default.
+
 # Configuration
 
 ## 1. Create a resource in the Azure portal
@@ -41,6 +46,8 @@ Input the **API Endpoint** and **API Key** you obtained from the Azure portal, a
 
 ![](./_assets/img_set_up_authorize.jpg)
 
+The API version defaults to `2024-11-30`. The plugin validates it against the versions supported by the installed Azure AI Document Intelligence SDK and rejects unsupported values before sending a request.
+
 ## 5. Use the tools provided by the plugin
 
 Add tool to the canvas and configure it.
@@ -50,6 +57,8 @@ Add tool to the canvas and configure it.
 # Notes
 
 This plugin uses the Document Layout Analysis API v4.0 of the [Azure AI Document Intelligence](https://azure.microsoft.com/products/ai-services/ai-document-intelligence) service. Please refer to the official documentation for more information.
+
+This plugin does not use Azure AI Content Understanding. Content Understanding endpoints, API versions, and analyzers are not interchangeable with Azure AI Document Intelligence.
 
 # Report Issues and Contributing
 
