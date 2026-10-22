@@ -22,7 +22,7 @@ Learn more about the Document Layout Analysis API v4.0 [here](https://learn.micr
 
 The tool also supports:
 
-- Optional comma-separated 1-based page ranges (e.g. `1-10, 11-20, 21-50`). Each range is analyzed separately and returned as one element `{first_page, last_page, content}` of the `segments` output; the `text` output contains all segments joined by a blank line. Ranges must be ascending by first page, may overlap, and are limited to 20. This replaces the former first/last page settings (breaking change in 0.1.0).
+- Optional comma-separated 1-based page ranges (e.g. `1-10, 11-20, 21-50`). Each range is analyzed separately and concurrently, and returned in input order as one element `{first_page, last_page, content}` of the `segments` output; the `text` output contains all segments joined by a blank line. Ranges may be entered in any order, may overlap, and are limited to 20. This replaces the former first/last page settings (breaking change in 0.1.0).
 - Optional removal of Markdown lines containing Azure `PageHeader` comments. This is disabled by default to preserve existing output.
 - A provider-level API version setting. The installed Azure AI Document Intelligence SDK supports `2024-11-30`; unsupported versions are rejected before a request is sent.
 

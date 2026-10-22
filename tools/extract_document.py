@@ -1,6 +1,7 @@
 import io
 import re
 from collections.abc import Generator
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any, NamedTuple
 
 from azure.ai.documentintelligence import DocumentIntelligenceClient
@@ -45,8 +46,6 @@ def _parse_page_ranges(value: object) -> list[PageRange]:
             raise ValueError(f"Invalid page range '{token}': page numbers must be positive integers")
         if last < first:
             raise ValueError(f"Invalid page range '{token}': last page must be greater than or equal to first page")
-        if ranges and first < ranges[-1].first_page:
-            raise ValueError(f"Invalid page range '{token}': ranges must be in ascending order by first page")
         ranges.append(PageRange(first, last))
 
     if len(ranges) > MAX_PAGE_RANGES:
@@ -79,6 +78,32 @@ def _analyze(
     return content
 
 
+def _analyze_page_range(
+    endpoint: str,
+    api_key: str,
+    api_version: str,
+    file_bytes: bytes,
+    output_format: object,
+    remove_page_headers: bool,
+    page_range: PageRange,
+) -> str:
+    client = DocumentIntelligenceClient(
+        endpoint,
+        AzureKeyCredential(api_key),
+        api_version=api_version,
+    )
+    try:
+        return _analyze(
+            client,
+            file_bytes,
+            output_format,
+            remove_page_headers,
+            page_range.to_azure(),
+        )
+    finally:
+        client.close()
+
+
 class ExtractDocumentTool(Tool):
     def _invoke(self, tool_parameters: dict[str, Any]) -> Generator[ToolInvokeMessage]:
         # Ensure runtime and credentials
@@ -105,30 +130,46 @@ class ExtractDocumentTool(Tool):
         page_ranges = _parse_page_ranges(tool_parameters.get("page_ranges"))
         remove_page_headers = tool_parameters.get("remove_page_headers", False) is True
 
-        client = DocumentIntelligenceClient(
-            endpoint,
-            AzureKeyCredential(api_key),
-            api_version=api_version,
-        )
-
         if not page_ranges:
+            client = DocumentIntelligenceClient(
+                endpoint,
+                AzureKeyCredential(api_key),
+                api_version=api_version,
+            )
             yield self.create_text_message(_analyze(client, file.blob, output_format, remove_page_headers, None))
             return
 
         segments: list[dict[str, Any]] = []
-        for page_range in page_ranges:
-            pages = page_range.to_azure()
-            try:
-                content = _analyze(client, file.blob, output_format, remove_page_headers, pages)
-            except Exception as error:
-                raise ValueError(f"Failed to analyze pages {pages}: {error}") from error
-            segments.append(
-                {
-                    "first_page": page_range.first_page,
-                    "last_page": page_range.last_page,
-                    "content": content,
-                }
-            )
+        with ThreadPoolExecutor(max_workers=len(page_ranges)) as executor:
+            futures = [
+                (
+                    page_range,
+                    executor.submit(
+                        _analyze_page_range,
+                        endpoint,
+                        api_key,
+                        api_version,
+                        file.blob,
+                        output_format,
+                        remove_page_headers,
+                        page_range,
+                    ),
+                )
+                for page_range in page_ranges
+            ]
+            for page_range, future in futures:
+                pages = page_range.to_azure()
+                try:
+                    content = future.result()
+                except Exception as error:
+                    raise ValueError(f"Failed to analyze pages {pages}: {error}") from error
+                segments.append(
+                    {
+                        "first_page": page_range.first_page,
+                        "last_page": page_range.last_page,
+                        "content": content,
+                    }
+                )
 
         yield self.create_text_message("\n\n".join(segment["content"] for segment in segments))
         yield self.create_json_message({"segments": segments})
