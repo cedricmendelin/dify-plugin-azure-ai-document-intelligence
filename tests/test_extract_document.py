@@ -22,8 +22,6 @@ def _make_tool(credentials: dict | None = None) -> SimpleNamespace:
                 "api_version": "2024-11-30",
             }
         ),
-        create_text_message=lambda value: ("text", value),
-        create_json_message=lambda value: ("json", value),
         create_variable_message=lambda name, value: ("variable", name, value),
     )
 
@@ -88,7 +86,7 @@ class PageHeaderTests(unittest.TestCase):
 
 class ExtractDocumentToolTests(unittest.TestCase):
     @patch("tools.extract_document.DocumentIntelligenceClient")
-    def test_whole_document_returns_text_only(self, client_type: Mock) -> None:
+    def test_whole_document_returns_segments_only(self, client_type: Mock) -> None:
         content = "<!-- PageHeader: Confidential -->\nBody"
         _mock_results(client_type, [content])
         tool = _make_tool(
@@ -104,9 +102,32 @@ class ExtractDocumentToolTests(unittest.TestCase):
 
         messages = list(ExtractDocumentTool._invoke(tool, parameters))
 
-        self.assertEqual(messages, [("text", content)])
+        self.assertEqual(messages, [
+            ("variable", "segments", [{"first_page": None, "last_page": None, "content": content}]),
+        ])
         client_type.return_value.begin_analyze_document.assert_called_once()
         self.assertIsNone(client_type.return_value.begin_analyze_document.call_args.kwargs["pages"])
+        client_type.return_value.close.assert_called_once()
+
+    @patch("tools.extract_document.DocumentIntelligenceClient")
+    def test_whole_document_filters_headers_and_handles_empty_content(self, client_type: Mock) -> None:
+        for content, expected in [
+            ("<!-- PageHeader: Confidential -->\nBody", "Body"),
+            ("", ""),
+            (None, ""),
+        ]:
+            with self.subTest(content=content):
+                poller = Mock()
+                poller.result.return_value = SimpleNamespace(content=content)
+                client_type.return_value.begin_analyze_document.return_value = poller
+                messages = list(ExtractDocumentTool._invoke(_make_tool(), {
+                    "input_file": SimpleNamespace(blob=b"document"),
+                    "output_format": "markdown",
+                    "remove_page_headers": True,
+                }))
+                self.assertEqual(messages, [
+                    ("variable", "segments", [{"first_page": None, "last_page": None, "content": expected}]),
+                ])
 
     @patch("tools.extract_document.DocumentIntelligenceClient")
     def test_analyzes_each_range_separately(self, client_type: Mock) -> None:
@@ -138,8 +159,6 @@ class ExtractDocumentToolTests(unittest.TestCase):
         messages = list(ExtractDocumentTool._invoke(tool, parameters))
 
         self.assertEqual(messages, [
-            ("text", "Three\n\n# A\nOne\n\n# B\nTwo"),
-            ("json", {"segments": segments}),
             ("variable", "segments", segments),
         ])
         self.assertEqual(client_type.call_count, 3)
@@ -180,8 +199,6 @@ class ExtractDocumentToolTests(unittest.TestCase):
             {"first_page": 9, "last_page": 12, "content": "9-12"},
         ]
         self.assertEqual(messages, [
-            ("text", "13-19\n\n70-76\n\n121-130\n\n9-12"),
-            ("json", {"segments": segments}),
             ("variable", "segments", segments),
         ])
         self.assertEqual(client_type.call_count, 4)

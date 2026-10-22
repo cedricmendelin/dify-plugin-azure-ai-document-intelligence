@@ -17,9 +17,14 @@ Learn more about the Document Layout Analysis API v4.0 [here](https://learn.micr
 
 Optional extraction settings:
 
-- **Page ranges:** Optional comma-separated 1-based page ranges, e.g. `1-10, 11-20, 21-50`, `5, 7-9`, or `13-19, 70-76, 121-130, 9-12`. Each range is analyzed with a separate Azure request, concurrently (up to 20 ranges), and results are returned in input order as one element of the `segments` output. Each element is `{first_page, last_page, content}`. The `text` output contains all segment contents joined by a blank line. Ranges may be entered in any order and may overlap (overlapping pages are billed again); at most 20 ranges are allowed. Open-ended ranges such as `11-` are not supported. If any range fails (e.g. it lies beyond the document), the whole call fails with an error naming the range. Leave empty to analyze the whole document; then only the `text` output is returned. Page ranges apply to paginated formats such as PDF and TIFF.
+- **Page ranges:** Optional comma-separated 1-based page ranges, e.g. `1-10, 11-20, 21-50`, `5, 7-9`, or `13-19, 70-76, 121-130, 9-12`. Each range is analyzed with a separate Azure request, concurrently (up to 20 ranges), and results are returned in input order as one element of the `segments` list. Each element is `{first_page, last_page, content}`. Ranges may be entered in any order and may overlap (overlapping pages are billed again); at most 20 ranges are allowed. Open-ended ranges such as `11-` are not supported. If any range fails (e.g. it lies beyond the document), the whole call fails with an error naming the range. Leave empty to analyze the whole document; the list then contains one segment with `first_page` and `last_page` set to `null`. Page ranges apply to paginated formats such as PDF and TIFF.
 - **Breaking change (0.1.0):** The former *First page* / *Last page* settings were replaced by *Page ranges*. Use `2-4` instead of first page 2 and last page 4.
 - **Remove page headers:** Remove Markdown lines containing Azure `PageHeader` comments. This is disabled by default.
+
+**Output compatibility:** Only the `segments` list is populated; each segment's
+`content` contains text or Markdown according to the selected output format.
+Workflows that previously consumed `text` or `json` must switch to `segments`.
+Dify's fixed `text`, `files`, and `json` outputs may still appear, but remain empty.
 
 # Configuration
 

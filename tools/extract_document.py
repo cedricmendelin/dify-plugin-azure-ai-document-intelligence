@@ -136,7 +136,14 @@ class ExtractDocumentTool(Tool):
                 AzureKeyCredential(api_key),
                 api_version=api_version,
             )
-            yield self.create_text_message(_analyze(client, file.blob, output_format, remove_page_headers, None))
+            try:
+                content = _analyze(client, file.blob, output_format, remove_page_headers, None)
+            finally:
+                client.close()
+            yield self.create_variable_message(
+                "segments",
+                [{"first_page": None, "last_page": None, "content": content}],
+            )
             return
 
         segments: list[dict[str, Any]] = []
@@ -171,6 +178,4 @@ class ExtractDocumentTool(Tool):
                     }
                 )
 
-        yield self.create_text_message("\n\n".join(segment["content"] for segment in segments))
-        yield self.create_json_message({"segments": segments})
         yield self.create_variable_message("segments", segments)

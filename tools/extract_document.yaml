@@ -70,14 +70,14 @@ output_schema:
   properties:
     segments:
       type: array
-      description: One element per requested page range, in input order. Only set when page ranges are provided.
+      description: The only populated output. One element per requested page range, in input order, or one whole-document element with null page bounds when no ranges are provided. Content is text or Markdown according to output_format.
       items:
         type: object
         properties:
           first_page:
-            type: integer
+            type: [integer, "null"]
           last_page:
-            type: integer
+            type: [integer, "null"]
           content:
             type: string
 extra:
