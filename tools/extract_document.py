@@ -1,6 +1,7 @@
 import io
+import re
 from collections.abc import Generator
-from typing import Any
+from typing import Any, NamedTuple
 
 from azure.ai.documentintelligence import DocumentIntelligenceClient
 from azure.core.credentials import AzureKeyCredential
@@ -9,45 +10,73 @@ from dify_plugin.entities.tool import ToolInvokeMessage
 
 from azure_config import validate_api_version
 
-
-def _parse_page_number(value: object, parameter_name: str) -> int | None:
-    if value is None or value == "":
-        return None
-
-    if isinstance(value, bool):
-        raise ValueError(f"{parameter_name} must be a positive integer")
-
-    if isinstance(value, int):
-        page_number = value
-    elif isinstance(value, float) and value.is_integer():
-        page_number = int(value)
-    elif isinstance(value, str) and value.strip().isdigit():
-        page_number = int(value.strip())
-    else:
-        raise ValueError(f"{parameter_name} must be a positive integer")
-
-    if page_number < 1:
-        raise ValueError(f"{parameter_name} must be a positive integer")
-    return page_number
+MAX_PAGE_RANGES = 20
+_RANGE_PATTERN = re.compile(r"^(\d+)(?:\s*-\s*(\d+))?$")
 
 
-def _build_page_range(first_page: object, last_page: object) -> str | None:
-    first = _parse_page_number(first_page, "First page")
-    last = _parse_page_number(last_page, "Last page")
+class PageRange(NamedTuple):
+    first_page: int
+    last_page: int
 
-    if first is None and last is None:
-        return None
-    if first is None:
-        return f"1-{last}"
-    if last is None:
-        return str(first)
-    if last < first:
-        raise ValueError("Last page must be greater than or equal to first page")
-    return str(first) if first == last else f"{first}-{last}"
+    def to_azure(self) -> str:
+        if self.first_page == self.last_page:
+            return str(self.first_page)
+        return f"{self.first_page}-{self.last_page}"
+
+
+def _parse_page_ranges(value: object) -> list[PageRange]:
+    if value is None:
+        return []
+    if not isinstance(value, str):
+        raise ValueError("Page ranges must be a string such as '1-10, 11-20'")
+
+    tokens = [token.strip() for token in value.split(",")]
+    if all(token == "" for token in tokens):
+        return []
+
+    ranges: list[PageRange] = []
+    for token in tokens:
+        match = _RANGE_PATTERN.match(token)
+        if not match:
+            raise ValueError(f"Invalid page range '{token}': use a page number like '5' or a range like '1-10'")
+        first = int(match.group(1))
+        last = int(match.group(2)) if match.group(2) is not None else first
+        if first < 1:
+            raise ValueError(f"Invalid page range '{token}': page numbers must be positive integers")
+        if last < first:
+            raise ValueError(f"Invalid page range '{token}': last page must be greater than or equal to first page")
+        if ranges and first < ranges[-1].first_page:
+            raise ValueError(f"Invalid page range '{token}': ranges must be in ascending order by first page")
+        ranges.append(PageRange(first, last))
+
+    if len(ranges) > MAX_PAGE_RANGES:
+        raise ValueError(f"Too many page ranges: at most {MAX_PAGE_RANGES} are allowed, got {len(ranges)}")
+    return ranges
 
 
 def _remove_page_headers(content: str) -> str:
     return "\n".join(line for line in content.splitlines() if "<!-- PageHeader:" not in line).strip()
+
+
+def _analyze(
+    client: DocumentIntelligenceClient,
+    file_bytes: bytes,
+    output_format: object,
+    remove_page_headers: bool,
+    pages: str | None,
+) -> str:
+    poller = client.begin_analyze_document(
+        model_id="prebuilt-layout",
+        body=io.BytesIO(file_bytes),
+        content_type="application/octet-stream",
+        output_content_format="markdown" if output_format == "markdown" else None,
+        pages=pages,
+    )
+    content = poller.result().content or ""
+
+    if output_format == "markdown" and remove_page_headers:
+        content = _remove_page_headers(content)
+    return content
 
 
 class ExtractDocumentTool(Tool):
@@ -67,40 +96,40 @@ class ExtractDocumentTool(Tool):
         if not api_key:
             raise ValueError("API key is missing")
 
-        # Create credential
-        credential = AzureKeyCredential(api_key)
-
         # Get file
         file = tool_parameters.get("input_file")
         if not file:
             raise ValueError("File is required")
-        file_binary = io.BytesIO(file.blob)
 
-        # Get output format
         output_format = tool_parameters.get("output_format")
-        pages = _build_page_range(
-            tool_parameters.get("first_page"),
-            tool_parameters.get("last_page"),
-        )
+        page_ranges = _parse_page_ranges(tool_parameters.get("page_ranges"))
         remove_page_headers = tool_parameters.get("remove_page_headers", False) is True
 
-        # Create client and analyze document
-        document_analysis_client = DocumentIntelligenceClient(
+        client = DocumentIntelligenceClient(
             endpoint,
-            credential,
+            AzureKeyCredential(api_key),
             api_version=api_version,
         )
-        poller = document_analysis_client.begin_analyze_document(
-            model_id="prebuilt-layout",
-            body=file_binary,
-            content_type="application/octet-stream",
-            output_content_format="markdown" if output_format == "markdown" else None,
-            pages=pages,
-        )
-        result = poller.result()
-        content = result.content
 
-        if output_format == "markdown" and remove_page_headers:
-            content = _remove_page_headers(content)
+        if not page_ranges:
+            yield self.create_text_message(_analyze(client, file.blob, output_format, remove_page_headers, None))
+            return
 
-        yield self.create_text_message(content)
+        segments: list[dict[str, Any]] = []
+        for page_range in page_ranges:
+            pages = page_range.to_azure()
+            try:
+                content = _analyze(client, file.blob, output_format, remove_page_headers, pages)
+            except Exception as error:
+                raise ValueError(f"Failed to analyze pages {pages}: {error}") from error
+            segments.append(
+                {
+                    "first_page": page_range.first_page,
+                    "last_page": page_range.last_page,
+                    "content": content,
+                }
+            )
+
+        yield self.create_text_message("\n\n".join(segment["content"] for segment in segments))
+        yield self.create_json_message({"segments": segments})
+        yield self.create_variable_message("segments", segments)
