@@ -1,6 +1,6 @@
 identity:
   name: extract_document
-  author: fujita-h
+  author: cedricmendelin
   label:
     en_US: Extract Document
     ja_JP: ドキュメントの展開
@@ -42,30 +42,17 @@ parameters:
           en_US: Markdown
           ja_JP: Markdown
     default: text
-  - name: first_page
-    type: number
+  - name: page_ranges
+    type: string
     required: false
-    min: 1
     label:
-      en_US: First page
-      ja_JP: 開始ページ
+      en_US: Page ranges
+      ja_JP: ページ範囲
     human_description:
-      en_US: First 1-based page to analyze. If last page is omitted, only this page is analyzed.
-      ja_JP: 解析する最初のページ（1から開始）。終了ページを省略すると、このページのみを解析します。
-    llm_description: Optional first 1-based page to analyze.
-    form: form
-  - name: last_page
-    type: number
-    required: false
-    min: 1
-    label:
-      en_US: Last page
-      ja_JP: 終了ページ
-    human_description:
-      en_US: Last 1-based page to analyze. If first page is omitted, analysis starts at page 1.
-      ja_JP: 解析する最後のページ（1から開始）。開始ページを省略すると、1ページ目から解析します。
-    llm_description: Optional last 1-based page to analyze.
-    form: form
+      en_US: "Optional comma-separated 1-based page ranges, e.g. '1-10, 11-20, 21-50' or '5, 7-9'. Each range is analyzed separately and returned as one element of the segments list. Ranges must be in ascending order by first page; overlaps are allowed; at most 20 ranges. Leave empty to analyze the whole document."
+      ja_JP: "カンマ区切りの1から始まるページ範囲（任意）。例: '1-10, 11-20, 21-50' や '5, 7-9'。各範囲は個別に解析され、segments リストの1要素として返されます。範囲は開始ページの昇順で指定し、重複は許可されます。最大20範囲。空欄の場合はドキュメント全体を解析します。"
+    llm_description: "Optional comma-separated 1-based page ranges such as '1-10, 11-20'. Each item is a page number or 'first-last'. Ranges must be in ascending order by first page, may overlap, and at most 20 are allowed. Each range is returned as a separate segment."
+    form: llm
   - name: remove_page_headers
     type: boolean
     required: false
@@ -78,6 +65,21 @@ parameters:
       ja_JP: Azure の PageHeader コメントを含む Markdown 行を削除します。既定では無効です。
     llm_description: Whether to remove Markdown lines containing Azure PageHeader comments.
     form: form
+output_schema:
+  type: object
+  properties:
+    segments:
+      type: array
+      description: One element per requested page range, in input order. Only set when page ranges are provided.
+      items:
+        type: object
+        properties:
+          first_page:
+            type: integer
+          last_page:
+            type: integer
+          content:
+            type: string
 extra:
   python:
     source: tools/extract_document.py
